@@ -34,7 +34,7 @@ const SMTP_HOST = process.env.SMTP_HOST || null;     /* ex.: smtp.gmail.com */
 const SMTP_PORT = process.env.SMTP_PORT || "465";
 const SMTP_USUARIO = process.env.SMTP_USUARIO || null;
 const SMTP_SENHA = process.env.SMTP_SENHA || null;   /* senha de app (Gmail) ou chave SMTP (Brevo) */
-const SITE_URL = process.env.SITE_URL || "https://agenda-julyane.onrender.com";
+const SITE_URL = process.env.SITE_URL || "https://agendajulyane.onrender.com";
 
 if (VAPID_PUBLICA && VAPID_PRIVADA) {
   webpush.setVapidDetails(VAPID_CONTATO, VAPID_PUBLICA, VAPID_PRIVADA);
@@ -227,14 +227,14 @@ app.put("/api/eventos", exigirSessao, async (req, res) => {
 
 app.get("/api/saude", (req, res) => res.json({ ok: true }));
 
-/* ---------- notificações push (lembrete diário às 09:00) ---------- */
+/* ---------- notificações push (lembrete diário às 07:00) ---------- */
 /* A tabela juliane_push guarda uma linha por dispositivo: endpoint + subscription. */
 
 app.get("/api/push-chave", (req, res) => {
   res.json({ publicKey: VAPID_PUBLICA, pronta: !!(VAPID_PUBLICA && VAPID_PRIVADA) });
 });
 
-/* Inscrição é pública: o lembrete das 09:00 não contém dados da agenda,
+/* Inscrição é pública: o lembrete das 07:00 não contém dados da agenda,
    então qualquer aparelho pode se cadastrar mesmo sem ter entrado. */
 app.post("/api/inscricoes", async (req, res) => {
   try {
@@ -268,7 +268,8 @@ app.delete("/api/inscricoes", exigirSessao, async (req, res) => {
   }
 });
 
-/* Chamado pelo agendador externo (cron) às 09:00 e às 15:00 de Brasília. */
+/* Chamado pelo agendador externo (cron) às 07:00 de Brasília.
+   Também aceita periodo=tarde para um segundo aviso, se quiser. */
 
 function hojeSaoPaulo() {
   return new Intl.DateTimeFormat("sv-SE", { timeZone: "America/Sao_Paulo" }).format(new Date());

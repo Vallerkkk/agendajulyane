@@ -37,7 +37,7 @@ self.addEventListener("fetch", ev => {
   );
 });
 
-/* Push do servidor (lembrete diário das 09:00 e avisos futuros) */
+/* Push do servidor (lembrete diário das 07:00 e avisos futuros) */
 self.addEventListener("push", ev => {
   let dados = {};
   try { dados = ev.data ? ev.data.json() : {}; }

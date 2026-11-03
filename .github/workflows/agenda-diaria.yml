@@ -1,0 +1,20 @@
+name: Agenda diária da Julyane
+
+on:
+  schedule:
+    # 10:00 UTC = 07:00 em Brasília (America/Sao_Paulo)
+    - cron: "0 10 * * *"
+  workflow_dispatch:
+
+jobs:
+  avisar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Disparar resumo do dia
+        run: |
+          curl -sS --fail-with-body --max-time 120 \
+            --retry 2 --retry-delay 15 --retry-all-errors \
+            -X POST "${{ vars.AGENDA_URL || 'https://agendajulyane.onrender.com' }}/api/despacho" \
+            -H "Content-Type: application/json" \
+            -H "x-agenda-token: ${{ secrets.AGENDA_TOKEN }}" \
+            -d '{"periodo":"manha"}'
