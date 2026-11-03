@@ -1,5 +1,8 @@
 name: Manter a agenda acordada
 
+# O agendador do GitHub está instável desde ago/2026: execuções por schedule
+# não são criadas, embora o disparo manual funcione. O keep-alive principal
+# fica no Supabase (bloco no fim de supabase.sql); este workflow é a reserva.
 on:
   schedule:
     # A cada 10 minutos: evita a hibernação do serviço gratuito do Render

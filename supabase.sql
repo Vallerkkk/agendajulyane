@@ -33,3 +33,14 @@ alter table public.juliane_push enable row level security;
 comment on table public.juliane_eventos is 'Compromissos da agenda (JSON completo por evento)';
 comment on table public.juliane_acesso is 'Login único do painel (salt + hash PBKDF2)';
 comment on table public.juliane_push is 'Inscrições de notificação push por dispositivo';
+
+-- Keep-alive do site: o Render gratuito hiberna após 15 minutos sem acesso.
+-- O agendador do GitHub está instável, então o Supabase faz o ping a cada 10 minutos.
+create extension if not exists pg_cron with schema extensions;
+create extension if not exists pg_net with schema extensions;
+
+select cron.schedule(
+  'acordar-agenda-julyane',
+  '*/10 * * * *',
+  $$ select net.http_get(url := 'https://agendajulyane.onrender.com/api/saude', timeout_milliseconds := 60000) $$
+);
