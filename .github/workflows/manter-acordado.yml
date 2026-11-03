@@ -4,6 +4,8 @@ on:
   schedule:
     # A cada 10 minutos: evita a hibernação do serviço gratuito do Render
     - cron: "*/10 * * * *"
+  push:
+    # Cada publicação também acorda o site
   workflow_dispatch:
 
 concurrency:
