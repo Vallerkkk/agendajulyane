@@ -1,0 +1,61 @@
+/* Service worker da Agenda Julyane
+   - Arquivos do app: rede primeiro, cache como reserva (funciona offline)
+   - /api/*: nunca em cache (sincronização sempre ao vivo)
+*/
+const CACHE = "agenda-julyane-v1";
+const ESTATICOS = ["/", "/index.html", "/manifest.webmanifest",
+  "/logo-julyane.png", "/logo-julyane-simbolo.png",
+  "/icons/favicon-32.png", "/icons/favicon-48.png",
+  "/icons/apple-touch-icon.png", "/icons/icon-192.png", "/icons/icon-512.png",
+  "/icons/icon-maskable-192.png", "/icons/icon-maskable-512.png"];
+
+self.addEventListener("install", ev => {
+  ev.waitUntil(caches.open(CACHE).then(c => c.addAll(ESTATICOS)).then(() => self.skipWaiting()));
+});
+
+self.addEventListener("activate", ev => {
+  ev.waitUntil(
+    caches.keys().then(chaves => Promise.all(
+      chaves.filter(k => k !== CACHE).map(k => caches.delete(k))
+    )).then(() => self.clients.claim())
+  );
+});
+
+self.addEventListener("fetch", ev => {
+  const url = new URL(ev.request.url);
+  if (ev.request.method !== "GET" || url.pathname.startsWith("/api/")) return;
+  ev.respondWith(
+    fetch(ev.request)
+      .then(resp => {
+        if (resp.ok && url.origin === self.location.origin) {
+          const copia = resp.clone();
+          caches.open(CACHE).then(c => c.put(ev.request, copia));
+        }
+        return resp;
+      })
+      .catch(() => caches.match(ev.request).then(hit => hit || caches.match("/index.html")))
+  );
+});
+
+/* Push do servidor (lembrete diário das 09:00 e avisos futuros) */
+self.addEventListener("push", ev => {
+  let dados = {};
+  try { dados = ev.data ? ev.data.json() : {}; }
+  catch { dados = { body: ev.data ? ev.data.text() : "" }; }
+  ev.waitUntil(self.registration.showNotification(dados.title || "Agenda da Julyane", {
+    body: dados.body || "Hora de checar a agenda.",
+    tag: dados.tag || "agenda-push",
+    icon: "/icons/icon-192.png",
+    badge: "/icons/favicon-48.png",
+    data: dados.data || {},
+  }));
+});
+
+/* Notificações recebidas por push (quando ativadas) abrem o app ao toque */
+self.addEventListener("notificationclick", ev => {
+  ev.notification.close();
+  ev.waitUntil(self.clients.matchAll({ type: "window" }).then(lista => {
+    for (const cliente of lista) { if ("focus" in cliente) return cliente.focus(); }
+    return self.clients.openWindow("/");
+  }));
+});
