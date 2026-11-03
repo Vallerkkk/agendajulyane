@@ -1,0 +1,22 @@
+name: Manter a agenda acordada
+
+on:
+  schedule:
+    # A cada 10 minutos: evita a hibernação do serviço gratuito do Render
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: manter-acordado
+  cancel-in-progress: true
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Acordar o site
+        run: |
+          curl -sS --fail-with-body --max-time 120 \
+            --retry 3 --retry-delay 20 --retry-all-errors \
+            "${{ vars.AGENDA_URL || 'https://agendajulyane.onrender.com' }}/api/saude"
