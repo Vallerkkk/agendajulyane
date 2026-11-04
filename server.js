@@ -115,6 +115,16 @@ const SEGREDOS_SESSAO = process.env.SESSION_SECRET || SUPABASE_SECRET_KEY || "ag
 function assinar(texto) {
   return crypto.createHmac("sha256", SEGREDOS_SESSAO).update(texto).digest("hex");
 }
+/* Token fixo do agendador (Supabase pg_cron). Vale mesmo sem CRON_TOKEN
+   configurado no Render, porque deriva do segredo de sessão. */
+function tokenDespacho() {
+  return crypto.createHmac("sha256", SEGREDOS_SESSAO).update("despacho-diario").digest("hex");
+}
+function tokenConfere(enviado, esperado) {
+  if (!esperado || typeof enviado !== "string") return false;
+  const a = Buffer.from(enviado), b = Buffer.from(esperado);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
 function novoToken() {
   const corpo = crypto.randomBytes(16).toString("hex") + "." + (Date.now() + VALIDADE_SESSAO);
   return corpo + "." + assinar(corpo);
@@ -476,18 +486,16 @@ async function enviarSMS(m, aviso) {
 
 app.post("/api/despacho", async (req, res) => {
   try {
-    if (!CRON_TOKEN) return res.status(503).json({ erro: "CRON_TOKEN não configurado" });
-    if (req.headers["x-agenda-token"] !== CRON_TOKEN)
-      return res.status(401).json({ erro: "token inválido" });
-    if (!VAPID_PUBLICA || !VAPID_PRIVADA)
-      return res.status(503).json({ erro: "chaves VAPID não configuradas" });
+    const enviado = req.headers["x-agenda-token"];
+    const autorizado = sessaoValida(req) ||
+      tokenConfere(enviado, CRON_TOKEN) || tokenConfere(enviado, tokenDespacho());
+    if (!autorizado) return res.status(401).json({ erro: "token inválido" });
 
     const m = MSG[(req.body && req.body.periodo) || req.query.periodo || "manha"] || MSG.manha;
     const hoje = hojeSaoPaulo();
     const eventos = await listarEventos().catch(e => { console.error("leitura de eventos falhou:", e.message); return []; });
     const atrasos = atrasosDoDia(eventos, hoje);
     const aviso = avisoAtraso(atrasos);
-    const linhas = await sbFetch("juliane_push?select=endpoint,dados");
     const corpo = JSON.stringify({
       title: "Agenda da Julyane",
       body: frase(m) + aviso,
@@ -495,21 +503,27 @@ app.post("/api/despacho", async (req, res) => {
       data: { url: "/" },
     });
 
-    let enviados = 0, mortas = 0, falhas = 0;
-    for (const linha of linhas || []) {
-      try {
-        await webpush.sendNotification(linha.dados, corpo);
-        enviados++;
-      } catch (e) {
-        if (e && (e.statusCode === 404 || e.statusCode === 410)) {
-          await sbFetch("juliane_push?endpoint=eq." + encodeURIComponent(linha.endpoint),
-            { method: "DELETE", headers: sbHeaders() }).catch(() => {});
-          mortas++;
-        } else {
-          console.error("push falhou", linha.endpoint.slice(0, 60), e && e.statusCode);
-          falhas++;
+    /* Push é opcional: sem as chaves VAPID o e-mail e o SMS continuam funcionando. */
+    let total = 0, enviados = 0, mortas = 0, falhas = 0, push = "nao configurado";
+    if (VAPID_PUBLICA && VAPID_PRIVADA) {
+      const linhas = await sbFetch("juliane_push?select=endpoint,dados");
+      total = (linhas || []).length;
+      for (const linha of linhas || []) {
+        try {
+          await webpush.sendNotification(linha.dados, corpo);
+          enviados++;
+        } catch (e) {
+          if (e && (e.statusCode === 404 || e.statusCode === 410)) {
+            await sbFetch("juliane_push?endpoint=eq." + encodeURIComponent(linha.endpoint),
+              { method: "DELETE", headers: sbHeaders() }).catch(() => {});
+            mortas++;
+          } else {
+            console.error("push falhou", linha.endpoint.slice(0, 60), e && e.statusCode);
+            falhas++;
+          }
         }
       }
+      push = "enviado";
     }
     let email = "nao configurado";
     if (EMAIL_PARA.length && (BREVO_API_KEY || (SMTP_HOST && SMTP_USUARIO && SMTP_SENHA))) {
@@ -532,7 +546,7 @@ app.post("/api/despacho", async (req, res) => {
       }
     }
 
-    res.json({ total: (linhas || []).length, enviados, mortas, falhas, email, sms });
+    res.json({ total, enviados, mortas, falhas, push, email, sms });
   } catch (e) {
     console.error(e);
     res.status(502).json({ erro: "Falha no disparo" });
